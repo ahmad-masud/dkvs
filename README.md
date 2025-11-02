@@ -1,4 +1,4 @@
-# dkvs — Distributed Key-Value Store (Raft-backed)
+# dkvs — Distributed Key-Value Store (Raft-backed) [![Go Reference](https://pkg.go.dev/badge/github.com/ahmad-masud/dkvs.svg)](https://pkg.go.dev/github.com/ahmad-masud/dkvs)
 
 Welcome to dkvs — a small, well-documented distributed key-value store implemented in Go with gRPC and HashiCorp Raft. It’s designed to be simple, readable, and easy to run locally for development and experimentation while providing the core primitives you’d expect from a distributed KV: leader-based strong consistency for writes, snapshots, persistence, graceful shutdown, simple auth, and observability.
 
