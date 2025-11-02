@@ -12,7 +12,7 @@ This README is intentionally comprehensive. It covers architecture, how to build
 - Features
 - High-level architecture
 - Quick start (Windows executable)
-- Run a 3-node example (in-process)
+- Run a 3-node example
 - Build from source
 - gRPC API and proto
 - Client usage (Go helper)
@@ -79,7 +79,7 @@ Build from repo root:
 
 ```cmd
 cd path\to\dkvs
-go build -o node.exe examples\raft_cluster\main.go
+go build -o node.exe _examples\raft_cluster\main.go
 ```
 
 Single-node (bootstrap) — one terminal:
@@ -106,6 +106,51 @@ node.exe -id=node0 -raft-addr=127.0.0.1:12100 -grpc=:50050 -data=./data/node0 -b
 Notes:
 - Use forward slashes in `-data=./data/nodeX` to avoid shell escaping issues.
 - Press Ctrl+C in a node’s terminal to stop it gracefully (releases file locks on Windows).
+
+---
+
+## Quick start (macOS/Linux)
+
+Build from repo root:
+
+```bash
+cd path/to/dkvs
+go build -o node _examples/raft_cluster/main.go
+```
+
+Single-node (bootstrap) — one terminal:
+
+```bash
+./node -id=node0 -raft-addr=127.0.0.1:12100 -grpc=:50050 -data=./data/node0 -bootstrap
+```
+
+3-node cluster — three terminals (followers first, then leader):
+
+```bash
+# Terminal A (node1)
+./node -id=node1 -raft-addr=127.0.0.1:12101 -grpc=:50051 -data=./data/node1
+
+# Terminal B (node2)
+./node -id=node2 -raft-addr=127.0.0.1:12102 -grpc=:50052 -data=./data/node2
+
+# Terminal C (leader)
+./node -id=node0 -raft-addr=127.0.0.1:12100 -grpc=:50050 -data=./data/node0 -bootstrap \
+	-voter id=node1,addr=127.0.0.1:12101 \
+	-voter id=node2,addr=127.0.0.1:12102
+```
+
+Test with grpcurl (writes to leader, reads anywhere):
+
+```bash
+# Write (leader port, e.g., 50050)
+grpcurl -plaintext -d '{"key":"k","value":"v"}' localhost:50050 proto.KVStore/Set
+
+# Read (any node)
+grpcurl -plaintext -d '{"key":"k"}' localhost:50052 proto.KVStore/Get
+
+# If you hit a follower for a write, add -v and look for the response header leader-address
+grpcurl -plaintext -v -d '{"key":"k","value":"v"}' localhost:50051 proto.KVStore/Set
+```
 
 Test with grpcurl (writes to leader, reads anywhere):
 
@@ -147,8 +192,7 @@ import (
 )
 
 func main() {
-	c, err := client.New("127.0.0.1:50051")
-	if err != nil { log.Fatal(err) }
+	c := client.New("127.0.0.1:50051")
 	defer c.Close()
 
 	ctx := context.Background()
@@ -163,7 +207,7 @@ func main() {
 
 ## Run a 3-node example
 
-Use the CLI under `examples/raft_cluster` (as shown in Quick Start). Build the single executable and start three terminals with unique `-id`, `-raft-addr`, `-grpc`, and `-data` paths. Start followers first, then the bootstrap leader. On Windows, prefer the executable method shown above over `go run`.
+Use the CLI under `_examples/raft_cluster` (as shown in Quick Starts). Build the single executable and start three terminals with unique `-id`, `-raft-addr`, `-grpc`, and `-data` paths. Start followers first, then the bootstrap leader. On Windows, prefer the executable method shown above over `go run`.
 
 ---
 
@@ -319,7 +363,7 @@ Notable tests:
 - `server/` — gRPC server, Raft init, handlers, options.
 - `kvstore/` — in-memory store and snapshot/restore.
 - `client/` — leader-aware Go client helper.
-- `examples/raft_cluster/` — CLI to run single-node or multi-node clusters.
+- `_examples/raft_cluster/` — CLI to run single-node or multi-node clusters (kept out of GoDoc).
 - `proto/` — protobuf definitions and generated stubs.
 
 ---
