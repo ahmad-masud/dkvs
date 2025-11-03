@@ -17,7 +17,6 @@ type ClusterConfig struct {
 	Bootstrap bool     // bootstrap this node
 	Voters    []string // raw voter specs: id=<id>,addr=<host:port>
 	AuthToken string   // optional bearer token
-	Metrics   string   // optional metrics listen address (e.g. :9100)
 }
 
 // RunClusterNode creates and runs a KVStore server based on ClusterConfig.
@@ -43,9 +42,6 @@ func RunClusterNode(cfg ClusterConfig) error {
 	if cfg.AuthToken != "" {
 		opts = append(opts, WithAuthToken(cfg.AuthToken))
 	}
-	if cfg.Metrics != "" {
-		opts = append(opts, WithMetricsAddr(cfg.Metrics))
-	}
 
 	s := NewServer(opts...)
 	logger.WithFields(map[string]interface{}{
@@ -57,7 +53,6 @@ func RunClusterNode(cfg ClusterConfig) error {
 		"bootstrap": cfg.Bootstrap,
 		"voters":    len(cfg.Voters),
 		"auth":      cfg.AuthToken != "",
-		"metrics":   cfg.Metrics,
 	}).Info("cluster node starting")
 
 	// Start AddVoter management if requested
@@ -134,9 +129,6 @@ func RunClusterNode(cfg ClusterConfig) error {
 	logger.WithFields(map[string]interface{}{"subsys": "cluster", "id": cfg.ID, "grpc": cfg.GRPCAddr, "raft": cfg.RaftAddr, "data": cfg.DataDir, "bootstrap": cfg.Bootstrap}).Info("raft_cluster")
 	if cfg.AuthToken != "" {
 		logger.WithField("subsys", "cluster").Info("auth: Bearer token required")
-	}
-	if cfg.Metrics != "" {
-		logger.WithFields(map[string]interface{}{"subsys": "cluster", "metrics": cfg.Metrics}).Info("metrics endpoint enabled")
 	}
 
 	defer func() {

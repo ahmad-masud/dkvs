@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/ahmad-masud/dkvs/proto"
 )
@@ -21,7 +22,7 @@ func main() {
 	flag.StringVar(&value, "value", "hello-world", "value to set")
 	flag.Parse()
 
-	conn, err := grpc.Dial(addr, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(5*time.Second))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("failed to dial %s: %v", addr, err)
 	}

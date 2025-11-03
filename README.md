@@ -2,7 +2,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/ahmad-masud/dkvs.svg)](https://pkg.go.dev/github.com/ahmad-masud/dkvs) [![Build Status](https://github.com/ahmad-masud/dkvs/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmad-masud/dkvs/actions/workflows/ci.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/ahmad-masud/dkvs)](https://goreportcard.com/report/github.com/ahmad-masud/dkvs) [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT) [![Release](https://img.shields.io/github/v/release/ahmad-masud/dkvs)](https://github.com/ahmad-masud/dkvs/releases)
 
 
-Welcome to dkvs — a small, well-documented distributed key-value store implemented in Go with gRPC and HashiCorp Raft. It’s designed to be simple, readable, and easy to run locally for development and experimentation while providing the core primitives you’d expect from a distributed KV: leader-based strong consistency for writes, snapshots, persistence, graceful shutdown, simple auth, and observability.
+Welcome to dkvs — a small, well-documented distributed key-value store implemented in Go with gRPC and HashiCorp Raft. It’s designed to be simple, readable, and easy to run locally for development and experimentation while providing the core primitives you’d expect from a distributed KV: leader-based strong consistency for writes, snapshots, persistence, graceful shutdown, and simple auth.
 
 This README is intentionally comprehensive. It covers architecture, how to build and run the project (single-node and small clusters), usage examples (client and server), configuration options, testing, troubleshooting notes (especially on Windows), and recommended next steps for production hardening.
 
@@ -20,7 +20,6 @@ This README is intentionally comprehensive. It covers architecture, how to build
 - Client usage (Go helper)
 - Configuration options
 - Authentication (Bearer token)
-- Observability (Prometheus metrics)
 - Snapshots and compaction
 - Tests and verification
 - Troubleshooting and Windows notes
@@ -40,7 +39,7 @@ dkvs is a lightweight key-value store whose goal is to be a minimal, yet functio
 - Snapshots and restore to limit Raft log growth.
 - A clean gRPC API for clients.
 - A small client that follows leader redirects and retries with backoff.
-- Operational basics: graceful shutdown, simple auth, and Prometheus metrics.
+- Operational basics: graceful shutdown and simple auth.
 
 This project is intentionally small and readable — great for learning, experimentation, and as a starting point for production work.
 
@@ -51,7 +50,6 @@ This project is intentionally small and readable — great for learning, experim
 - Snapshot/restore support to compact the Raft log.
 - Graceful shutdown that closes Raft stores (avoids file locks on Windows).
 - Lightweight Bearer token auth via `WithAuthToken(...)`.
-- Prometheus metrics endpoint with request counts and latency histograms.
 - Client helper with leader-follow and jittered exponential backoff.
 - Examples for single-node and multi-node clusters.
 - Unit and integration tests (including a 3-node Raft test).
@@ -282,7 +280,6 @@ Set via functional options in `server/options.go` when calling `server.NewServer
 - `WithRaft(dataDir, nodeID, bindAddr string, peers []string, bootstrap bool)`: enable and configure Raft.
 - `WithSnapshotThreshold(n int)`: trigger snapshots after N applied entries (0 = disabled).
 - `WithAuthToken(token string)`: require `authorization: Bearer <token>` on all RPCs.
-- `WithMetricsAddr(addr string)`: start an HTTP metrics endpoint on `addr` (Prometheus).
 - `WithTLS(certFile, keyFile string)`: TLS placeholders — wire as needed for production.
 
 ---
@@ -299,20 +296,6 @@ This is simple and useful for trusted environments. For untrusted networks, pref
 
 ---
 
-## Observability (Prometheus metrics)
-
-Enable with `WithMetricsAddr(":9100")`. The server exposes `/metrics` and publishes:
-
-- `kvstore_requests_total{method, status}` — counter of RPCs by method and gRPC status.
-- `kvstore_request_duration_seconds{method}` — histogram of handler latency.
-
-Example:
-
-```cmd
-curl http://127.0.0.1:9100/metrics
-```
-
-If embedding in a larger app, consider a custom Prometheus registry to avoid duplicate registrations.
 
 ---
 
@@ -337,7 +320,6 @@ go test ./...
 
 Notable tests:
 - `server/raft_integration_test.go`: spins up an ephemeral 3-node cluster and verifies replication.
-- `server/auth_metrics_test.go`: validates Bearer token auth and metrics instrumentation.
 - `kvstore` package: unit tests for store behavior and TTLs.
 
 ---
@@ -352,11 +334,10 @@ Notable tests:
 
 ## Production considerations and next steps
 
-- TLS/mTLS for gRPC and the metrics server if exposed beyond trusted networks.
+- TLS/mTLS for gRPC if exposed beyond trusted networks.
 - Stronger auth (mTLS, JWT, OIDC) instead of a static Bearer token.
 - Admin/ops endpoints (e.g., `/join`) for member management.
 - Backups for the Raft data directory and disaster recovery exercises.
-- More metrics and alerting (e.g., Raft health, snapshot frequency, store size).
 
 ---
 

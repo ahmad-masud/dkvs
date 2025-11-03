@@ -9,7 +9,10 @@ import (
 	"github.com/ahmad-masud/dkvs/proto"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func startTestServer(t *testing.T) (proto.KVStoreClient, func()) {
@@ -21,6 +24,38 @@ func startTestServer(t *testing.T) (proto.KVStoreClient, func()) {
 	}
 
 	s := NewServer()
+
+	grpcServer := grpc.NewServer()
+	proto.RegisterKVStoreServer(grpcServer, s)
+
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+			t.Logf("server exited: %v", err)
+		}
+	}()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+
+	client := proto.NewKVStoreClient(conn)
+
+	return client, func() {
+		conn.Close()
+		grpcServer.Stop()
+	}
+}
+
+func startTestServerWithOptions(t *testing.T, opts ...Option) (proto.KVStoreClient, func()) {
+	t.Helper()
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+
+	s := NewServer(opts...)
 
 	grpcServer := grpc.NewServer()
 	proto.RegisterKVStoreServer(grpcServer, s)
@@ -147,5 +182,96 @@ func TestServer_TTLExpiration(t *testing.T) {
 	}
 	if getResp.Found {
 		t.Fatalf("expected key to expire, but found: %+v", getResp)
+	}
+}
+
+func TestServer_DefaultTTL(t *testing.T) {
+	client, cleanup := startTestServerWithOptions(t, WithDefaultTTL(1*time.Second))
+	defer cleanup()
+
+	ctx := context.Background()
+	_, err := client.Set(ctx, &proto.SetRequest{Key: "dttl", Value: "x", Ttl: 0})
+	if err != nil {
+		t.Fatalf("Set failed: %v", err)
+	}
+	// Should be present immediately
+	r1, err := client.Get(ctx, &proto.GetRequest{Key: "dttl"})
+	if err != nil || !r1.Found {
+		t.Fatalf("expected found immediately, err=%v resp=%+v", err, r1)
+	}
+	// After ~1.2s should expire
+	time.Sleep(1200 * time.Millisecond)
+	r2, err := client.Get(ctx, &proto.GetRequest{Key: "dttl"})
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if r2.Found {
+		t.Fatalf("expected key to expire with default TTL")
+	}
+}
+
+func TestServer_AuthEnforcement(t *testing.T) {
+	client, cleanup := startTestServerWithOptions(t, WithAuthToken("secret"))
+	defer cleanup()
+
+	ctx := context.Background()
+	// Without auth header
+	_, err := client.Set(ctx, &proto.SetRequest{Key: "a", Value: "b"})
+	if err == nil {
+		t.Fatalf("expected unauthenticated error")
+	}
+	s, ok := status.FromError(err)
+	if !ok || s.Code() != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got: %v", err)
+	}
+	// With correct auth header
+	md := metadata.Pairs("authorization", "Bearer secret")
+	ctx2 := metadata.NewOutgoingContext(ctx, md)
+	_, err = client.Set(ctx2, &proto.SetRequest{Key: "a", Value: "b"})
+	if err != nil {
+		t.Fatalf("Set with auth failed: %v", err)
+	}
+}
+
+func TestServer_Hooks(t *testing.T) {
+	blockedErr := status.Error(codes.PermissionDenied, "blocked")
+	preCalled := 0
+	postCalled := 0
+	pre := func(ctx context.Context, method string, req interface{}) error {
+		preCalled++
+		return blockedErr
+	}
+	post := func(ctx context.Context, method string, req, resp interface{}) error {
+		postCalled++
+		return nil
+	}
+	client, cleanup := startTestServerWithOptions(t, WithPreHook(pre), WithPostHook(post))
+	defer cleanup()
+
+	ctx := context.Background()
+	_, err := client.Set(ctx, &proto.SetRequest{Key: "hk", Value: "hv"})
+	if err == nil {
+		t.Fatalf("expected error from preHook")
+	}
+	if preCalled != 1 {
+		t.Fatalf("expected preHook called once, got %d", preCalled)
+	}
+	if postCalled != 0 {
+		t.Fatalf("postHook should not be called on failure")
+	}
+
+	// Now allow and verify post hook runs
+	preCalled = 0
+	postCalled = 0
+	preAllow := func(ctx context.Context, method string, req interface{}) error { preCalled++; return nil }
+	postCount := func(ctx context.Context, method string, req, resp interface{}) error { postCalled++; return nil }
+	client2, cleanup2 := startTestServerWithOptions(t, WithPreHook(preAllow), WithPostHook(postCount))
+	defer cleanup2()
+	_, err = client2.Set(ctx, &proto.SetRequest{Key: "hk2", Value: "hv2"})
+	if err != nil {
+		t.Fatalf("Set failed: %v", err)
+	}
+	if preCalled != 1 || postCalled != 1 {
+		t.Fatalf("expected pre=1 post=1, got pre=%d post=%d", preCalled, postCalled)
 	}
 }

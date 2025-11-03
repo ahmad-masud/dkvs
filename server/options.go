@@ -87,10 +87,3 @@ func WithTLS(certFile, keyFile string) Option {
 		s.tlsKeyFile = keyFile
 	}
 }
-
-// WithMetricsAddr enables Prometheus metrics to be exposed on the given address.
-func WithMetricsAddr(addr string) Option {
-	return func(s *Server) {
-		s.metricsAddr = addr
-	}
-}

@@ -23,7 +23,6 @@ func main() {
 		dataDir   = flag.String("data", "./data/node0", "data directory for raft state")
 		bootstrap = flag.Bool("bootstrap", false, "bootstrap this node as initial cluster")
 		authToken = flag.String("auth", "", "optional bearer token required for RPCs")
-		metrics   = flag.String("metrics", "", "optional metrics listen address (e.g. :9100)")
 	)
 	var voters voterFlags
 	flag.Var(&voters, "voter", "repeated voter entries: id=<id>,addr=<host:port> (leader only)")
@@ -37,7 +36,6 @@ func main() {
 		Bootstrap: *bootstrap,
 		Voters:    voters,
 		AuthToken: *authToken,
-		Metrics:   *metrics,
 	}
 	if err := server.RunClusterNode(cfg); err != nil {
 		log.Fatal(err)

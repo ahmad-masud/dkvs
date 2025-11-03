@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,10 +16,10 @@ import (
 
 	"github.com/hashicorp/raft"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
@@ -54,10 +53,6 @@ type Server struct {
 	adminAddr   string
 	tlsCertFile string
 	tlsKeyFile  string
-	metricsAddr string
-	// prometheus metrics (optional)
-	requestCounter *prometheus.CounterVec
-	requestLatency *prometheus.HistogramVec
 }
 
 // NewServer creates a new Server instance with optional functional configuration.
@@ -72,40 +67,6 @@ func NewServer(opts ...Option) *Server {
 
 	// initialize gRPC clients for peers if any were provided via options
 	s.initPeerClients()
-	// initialize prometheus metrics (always create so tests can inspect)
-	if s.requestCounter == nil {
-		c := prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kvstore_requests_total",
-			Help: "Total number of gRPC requests handled",
-		}, []string{"method", "status"})
-		if err := prometheus.Register(c); err != nil {
-			if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-				if existing, ok := are.ExistingCollector.(*prometheus.CounterVec); ok {
-					c = existing
-				}
-			} else {
-				logger.WithField("subsys", "metrics").WithError(err).Warn("failed to register requestCounter")
-			}
-		}
-		s.requestCounter = c
-	}
-	if s.requestLatency == nil {
-		h := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "kvstore_request_duration_seconds",
-			Help:    "gRPC request duration in seconds",
-			Buckets: prometheus.DefBuckets,
-		}, []string{"method"})
-		if err := prometheus.Register(h); err != nil {
-			if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
-				if existing, ok := are.ExistingCollector.(*prometheus.HistogramVec); ok {
-					h = existing
-				}
-			} else {
-				logger.WithField("subsys", "metrics").WithError(err).Warn("failed to register requestLatency")
-			}
-		}
-		s.requestLatency = h
-	}
 	if s.raftEnabled {
 		// initialize raft node (non-fatal: errors will be logged)
 		if err := s.initRaft(); err != nil {
@@ -129,17 +90,6 @@ func NewServer(opts ...Option) *Server {
 		logger.WithField("subsys", "auth").Info("Bearer token auth enabled")
 	}
 
-	// start metrics HTTP endpoint if requested
-	if s.metricsAddr != "" {
-		go func(addr string) {
-			mux := http.NewServeMux()
-			mux.Handle("/metrics", promhttp.Handler())
-			logger.WithField("subsys", "metrics").Infof("metrics HTTP listening on %s", addr)
-			if err := http.ListenAndServe(addr, mux); err != nil {
-				logger.WithField("subsys", "metrics").WithError(err).Error("metrics server stopped")
-			}
-		}(s.metricsAddr)
-	}
 	logger.WithFields(map[string]interface{}{
 		"subsys":     "server",
 		"raft":       s.raftEnabled,
@@ -147,7 +97,6 @@ func NewServer(opts ...Option) *Server {
 		"raft_id":    s.raftID,
 		"raft_bind":  s.raftBind,
 		"snapshot_n": s.snapshotThreshold,
-		"metrics":    s.metricsAddr,
 		"auth":       s.authToken != "",
 	}).Info("server initialized")
 	return s
@@ -163,10 +112,23 @@ func (s *Server) initPeerClients() {
 	for _, addr := range s.peers {
 		// Dial with a short timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock())
-		cancel()
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			logger.WithFields(map[string]interface{}{"subsys": "peer", "peer": addr}).WithError(err).Warn("failed to dial peer")
+			cancel()
+			logger.WithFields(map[string]interface{}{"subsys": "peer", "peer": addr}).WithError(err).Warn("failed to create client for peer")
+			continue
+		}
+		// Best-effort: wait until connection is READY or timeout
+		for state := conn.GetState(); state != connectivity.Ready; state = conn.GetState() {
+			if !conn.WaitForStateChange(ctx, state) { // ctx timeout/cancel
+				_ = conn.Close()
+				logger.WithFields(map[string]interface{}{"subsys": "peer", "peer": addr}).Warn("timeout waiting for peer connection ready")
+				break
+			}
+		}
+		cancel()
+		if conn.GetState() != connectivity.Ready {
+			// Skip adding client if not ready within timeout
 			continue
 		}
 		s.peerConns[addr] = conn
@@ -179,18 +141,6 @@ func (s *Server) initPeerClients() {
 // If a PostHookFunc is set, it runs after a successful operation.
 func (s *Server) Set(ctx context.Context, req *proto.SetRequest) (resp *proto.SetResponse, err error) {
 	start := time.Now()
-	defer func() {
-		statusLabel := codes.OK.String()
-		if err != nil {
-			statusLabel = status.Code(err).String()
-		}
-		if s.requestCounter != nil {
-			s.requestCounter.WithLabelValues("Set", statusLabel).Inc()
-		}
-		if s.requestLatency != nil {
-			s.requestLatency.WithLabelValues("Set").Observe(time.Since(start).Seconds())
-		}
-	}()
 
 	if s.preHook != nil {
 		if err := s.preHook(ctx, "Set", req); err != nil {
@@ -277,19 +227,6 @@ func (s *Server) Set(ctx context.Context, req *proto.SetRequest) (resp *proto.Se
 // If a PreHookFunc is set, it runs before the operation.
 // If a PostHookFunc is set, it runs after retrieving the value.
 func (s *Server) Get(ctx context.Context, req *proto.GetRequest) (resp *proto.GetResponse, err error) {
-	start := time.Now()
-	defer func() {
-		statusLabel := codes.OK.String()
-		if err != nil {
-			statusLabel = status.Code(err).String()
-		}
-		if s.requestCounter != nil {
-			s.requestCounter.WithLabelValues("Get", statusLabel).Inc()
-		}
-		if s.requestLatency != nil {
-			s.requestLatency.WithLabelValues("Get").Observe(time.Since(start).Seconds())
-		}
-	}()
 
 	if s.preHook != nil {
 		if err := s.preHook(ctx, "Get", req); err != nil {
@@ -322,18 +259,6 @@ func (s *Server) Get(ctx context.Context, req *proto.GetRequest) (resp *proto.Ge
 // If a PostHookFunc is set, it runs after a successful deletion.
 func (s *Server) Delete(ctx context.Context, req *proto.DeleteRequest) (resp *proto.DeleteResponse, err error) {
 	start := time.Now()
-	defer func() {
-		statusLabel := codes.OK.String()
-		if err != nil {
-			statusLabel = status.Code(err).String()
-		}
-		if s.requestCounter != nil {
-			s.requestCounter.WithLabelValues("Delete", statusLabel).Inc()
-		}
-		if s.requestLatency != nil {
-			s.requestLatency.WithLabelValues("Delete").Observe(time.Since(start).Seconds())
-		}
-	}()
 
 	if s.preHook != nil {
 		if err := s.preHook(ctx, "Delete", req); err != nil {
