@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ahmad-masud/dkvs/kvstore"
+	hclog "github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
@@ -116,10 +117,13 @@ func (s *Server) initRaft() error {
 
 	config := raft.DefaultConfig()
 	config.LocalID = raft.ServerID(s.raftID)
+	// Route raft's internal logger through our std log router so formatting is unified.
+	// Configure at debug level for maximum visibility (can be adjusted by env later if desired).
+	config.Logger = hclog.New(&hclog.LoggerOptions{Output: stdLogOut, Name: "raft", Level: hclog.Debug})
 
 	// Setup Raft communication
 	addr := s.raftBind
-	transport, err := raft.NewTCPTransport(addr, nil, 3, 10*time.Second, os.Stderr)
+	transport, err := raft.NewTCPTransport(addr, nil, 3, 10*time.Second, stdLogOut)
 	if err != nil {
 		return fmt.Errorf("create transport: %w", err)
 	}
@@ -127,7 +131,7 @@ func (s *Server) initRaft() error {
 
 	// Create the snapshot store
 	snapDir := filepath.Join(s.raftDir, "snap")
-	snaps, err := raft.NewFileSnapshotStore(snapDir, 2, os.Stderr)
+	snaps, err := raft.NewFileSnapshotStore(snapDir, 2, stdLogOut)
 	if err != nil {
 		return fmt.Errorf("create snapshot store: %w", err)
 	}

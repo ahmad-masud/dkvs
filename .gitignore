@@ -3,6 +3,8 @@ dkvs
 *.exe
 *.out
 *.test
+node
+examples-client
 
 # Build and generated files
 /build/
