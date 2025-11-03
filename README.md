@@ -6,7 +6,8 @@ dkvs is a distributed key-value store written in Go, built on gRPC and HashiCorp
 
 The project is intended as a learning and development tool—easy to read, run locally, and extend. It demonstrates the essential components of a distributed store, including strong consistency for writes, Raft-based replication, snapshotting, on-disk persistence, graceful shutdown, and simple authentication.
 
-![](images/diagram.png)
+<img src="images/diagram.png" alt="drawing" style="width:400px;"/>
+
 ---
 
 ## Table of Contents
