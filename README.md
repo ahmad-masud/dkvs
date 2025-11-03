@@ -2,10 +2,11 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/ahmad-masud/dkvs.svg)](https://pkg.go.dev/github.com/ahmad-masud/dkvs) [![Build Status](https://github.com/ahmad-masud/dkvs/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmad-masud/dkvs/actions/workflows/ci.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/ahmad-masud/dkvs)](https://goreportcard.com/report/github.com/ahmad-masud/dkvs) [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT) [![Release](https://img.shields.io/github/v/release/ahmad-masud/dkvs)](https://github.com/ahmad-masud/dkvs/releases)
 
 
-Welcome to dkvs — a small, well-documented distributed key-value store implemented in Go with gRPC and HashiCorp Raft. It’s designed to be simple, readable, and easy to run locally for development and experimentation while providing the core primitives you’d expect from a distributed KV: leader-based strong consistency for writes, snapshots, persistence, graceful shutdown, and simple auth.
+dkvs is a distributed key-value store written in Go, built on gRPC and HashiCorp Raft. It provides a minimal reference implementation of a replicated key-value system using leader-based consensus.
 
-This README is intentionally comprehensive. It covers architecture, how to build and run the project (single-node and small clusters), usage examples (client and server), configuration options, testing, troubleshooting notes (especially on Windows), and recommended next steps for production hardening.
+The project is intended as a learning and development tool—easy to read, run locally, and extend. It demonstrates the essential components of a distributed store, including strong consistency for writes, Raft-based replication, snapshotting, on-disk persistence, graceful shutdown, and simple authentication.
 
+![](images/diagram.png)
 ---
 
 ## Table of Contents
