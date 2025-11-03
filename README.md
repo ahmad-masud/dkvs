@@ -1,4 +1,4 @@
-# dkvs — Distributed Key-Value Store (Raft-backed) 
+# dkvs (Distributed Key-Value Store)
 [![Go Reference](https://pkg.go.dev/badge/github.com/ahmad-masud/dkvs.svg)](https://pkg.go.dev/github.com/ahmad-masud/dkvs) [![Build Status](https://github.com/ahmad-masud/dkvs/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmad-masud/dkvs/actions/workflows/ci.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/ahmad-masud/dkvs)](https://goreportcard.com/report/github.com/ahmad-masud/dkvs) [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT) [![Release](https://img.shields.io/github/v/release/ahmad-masud/dkvs)](https://github.com/ahmad-masud/dkvs/releases)
 
 
