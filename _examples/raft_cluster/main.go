@@ -17,16 +17,20 @@ func (v *voterFlags) Set(s string) error { *v = append(*v, s); return nil }
 
 func main() {
 	var (
-		id        = flag.String("id", "node0", "raft node ID")
-		raftAddr  = flag.String("raft-addr", "127.0.0.1:12100", "raft transport address host:port")
-		grpcAddr  = flag.String("grpc", ":50050", "gRPC listen address")
-		dataDir   = flag.String("data", "./data/node0", "data directory for raft state")
-		bootstrap = flag.Bool("bootstrap", false, "bootstrap this node as initial cluster")
-		authToken = flag.String("auth", "", "optional bearer token required for RPCs")
+		id         = flag.String("id", "node0", "raft node ID")
+		raftAddr   = flag.String("raft-addr", "127.0.0.1:12100", "raft transport address host:port")
+		grpcAddr   = flag.String("grpc", ":50050", "gRPC listen address")
+		dataDir    = flag.String("data", "./data/node0", "data directory for raft state")
+		bootstrap  = flag.Bool("bootstrap", false, "bootstrap this node as initial cluster")
+		authToken  = flag.String("auth", "", "optional bearer token required for RPCs")
+		timestamps = flag.Bool("timestamps", false, "enable timestamps in logs (use -timestamps to enable)")
 	)
 	var voters voterFlags
 	flag.Var(&voters, "voter", "repeated voter entries: id=<id>,addr=<host:port> (leader only)")
 	flag.Parse()
+
+	// Configure logging timestamps according to flag
+	server.SetLogTimestamps(*timestamps)
 
 	cfg := server.ClusterConfig{
 		ID:        *id,

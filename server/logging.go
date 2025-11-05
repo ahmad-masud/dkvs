@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// logger is the package-wide logger configured for colorful, timestamped output.
+// logger is the package-wide logger configured for colorful output (timestamps optional).
 var logger = logrus.New()
 
 // stdLogOut is a shared router used to capture stdlib and other stderr writes
@@ -24,12 +24,13 @@ var logger = logrus.New()
 var stdLogOut *stdLogRouter
 
 func init() {
-	// Text formatter with colors and full timestamps
+	// Text formatter with colors; timestamps enabled by default
 	logger.SetFormatter(&logrus.TextFormatter{
-		ForceColors:     true,
-		FullTimestamp:   true,
-		TimestampFormat: time.RFC3339Nano,
-		PadLevelText:    true,
+		ForceColors:      true,
+		FullTimestamp:    true,
+		DisableTimestamp: false,
+		TimestampFormat:  time.RFC3339Nano,
+		PadLevelText:     true,
 	})
 	// Default to debug for rich visibility; can be overridden via KVSTORE_LOG
 	logger.SetLevel(logrus.DebugLevel)
@@ -49,6 +50,20 @@ func init() {
 	stdlog.SetOutput(stdLogOut)
 	// Avoid stdlib's timestamp prefix since logrus will add timestamps.
 	stdlog.SetFlags(0)
+}
+
+// SetLogTimestamps toggles timestamp display in log output at runtime.
+// Call early in program startup (e.g., from main) to affect global logging.
+func SetLogTimestamps(enabled bool) {
+	// Preserve other formatter settings while flipping timestamp flags
+	tf := &logrus.TextFormatter{
+		ForceColors:      true,
+		FullTimestamp:    enabled,
+		DisableTimestamp: !enabled,
+		TimestampFormat:  time.RFC3339Nano,
+		PadLevelText:     true,
+	}
+	logger.SetFormatter(tf)
 }
 
 // stdLogRouter routes lines written to the standard library logger into
